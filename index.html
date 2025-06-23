@@ -1,0 +1,384 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <title>Contabilidad Mental de Tiempo</title>
+  <style>
+    body {
+      font-family: sans-serif;
+      margin: 0;
+      padding: 0;
+      background-color: #f8f8f8;
+    }
+
+    .container {
+      display: flex;
+      height: 100vh;
+    }
+
+    .left-column {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      padding: 1rem;
+      gap: 1rem;
+    }
+
+    .form-area, .leyenda-area {
+      background: #ffffff;
+      border-radius: 12px;
+      padding: 1rem;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    }
+
+    #mostrarConfgisDiv {
+      margin:1rem;
+    }
+
+    .leyenda-area {
+      width: 100%;
+      margin: 1rem;
+    }
+
+    .mesa-area {
+      flex: 1;
+      position: relative;
+      /*background-color: #993333;*/
+      border-radius: 12px;
+      overflow: hidden;
+      aspect-ratio: 1 / 1;
+    }
+
+    .mesa-area canvas {
+      display: block;
+      width: 100%;
+      height: 100%;
+    }
+
+    .right-column {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 1rem;
+    }
+
+    .actividad {
+      display: flex;
+      align-items: center;
+      margin-bottom: 5px;
+      font-size: 0.9rem;
+    }
+
+    .color-box {
+      width: 20px;
+      height: 20px;
+      margin-right: 0.5rem;
+      border: 1px solid #444;
+      border-radius: 4px;
+    }
+
+    canvas {
+      background: transparent;
+      border: 1px solid #ccc;
+      margin-top: 1rem;
+      border-radius: 8px;
+    }
+
+    label {
+      display: block;
+      margin-top: 0.5rem;
+    }
+
+    input, button {
+      padding: 0.4rem;
+      margin-top: 0.2rem;
+      border-radius: 6px;
+      border: 1px solid #ccc;
+      width: 100%;
+      box-sizing: border-box;
+    }
+
+    button {
+      background-color: #0099e6;
+      color: white;
+      border: none;
+      cursor: pointer;
+      transition: background 0.3s ease;
+    }
+
+    button:hover {
+      background-color: #0077b3;
+    }
+
+    .toggleButton {
+      background-color: #ffffff;
+      color: #333;
+      border: 2px solid #0099e6;
+      padding: 0.5rem 1rem;
+      border-radius: 10px;
+      font-size: 1rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.3s ease;
+      box-shadow: 0 2px 6px rgba(0,0,0,0.1);
+    }
+
+    .toggleButton:hover {
+      background-color: #0099e6;
+      color: #fff;
+      box-shadow: 0 4px 12px rgba(0, 153, 230, 0.4);
+      transform: translateY(-2px);
+    }
+
+    .toggleButton:active {
+      transform: translateY(1px);
+      box-shadow: 0 2px 6px rgba(0,0,0,0.2);
+    }
+
+
+  </style>
+</head>
+<body>
+<div class="container">
+  <div class="left-column">
+    
+    <div class="mesa-area">
+      <canvas id="mesaCanvas"></canvas>
+    </div>
+  </div>
+  <div class="right-column">
+    <div id = "configs" class="form-area">
+      <label>¿Cuánto recurso de tiempo tenemos en unidades?
+        <input type="number" id="totalUnidades" value="16" />
+      </label>
+      <label>¿A cuántos minutos corresponde cada unidad?
+        <input type="number" id="minPorUnidad" value="50" />
+      </label>
+      <label>¿Cuántas actividades pensamos desarrollar?
+        <input type="number" id="numActividades" value="5" min="1" max="10" />
+      </label>
+      <label>¿Cuántas unidades ya nos gastamos?
+        <input type="number" id="unidadesAgotadas" value="0" />
+      </label>
+      <label>¿De la unidad actual, cuántos minutos quedan?
+        <input type="number" id="tiempoRestanteMinutos" value="50" />
+      </label>
+      <button onclick="actualizarCanvas()">Actualizar recurso</button>
+      <button onclick="ocultarConfigs()">Ocultar</button>
+    </div>
+
+    <div class="form-area" id="mostrarConfigsDiv">
+      <button class="toggleButton" onclick="mostrarConfigs()">Configuración</button>
+      <button class="toggleButton" onclick="toggleActividades()">Actividades</button>
+    </div>
+
+    <div id="contenedor-leyenda" class="leyenda-area">
+      <div id="leyendaActividades"></div>
+    </div>
+    <canvas id="gridCanvas"></canvas>
+    
+  </div>
+</div>
+<script>
+  // Cargar sonido
+  const sonidoArena = new Audio("sound/sand.mp3");
+  sonidoArena.load();
+
+  // Imágenes
+  const relojImgs = Array.from({length: 6}, (_, i) => Object.assign(new Image(), {src: `img/s${i+1}.png`}));
+  const relojBase = Object.assign(new Image(), {src: "img/s0.png"});
+  const mesaImg = Object.assign(new Image(), {src: "img/table.png"});
+
+  // Variables
+  let tiempoRestante = 0;
+  let minPorUnidad = 25;
+  let relojActivoIndex = null;
+  let cronometro;
+  let colores = [];
+  let celdas = [];
+  const coloresPastel = [
+    "#A7C7E7", // azul pastel
+    "#F7C8E0", // rosa suave
+    "#FCE2CE", // durazno claro
+    "#B5EAD7", // verde menta
+    "#FFF6A2", // amarillo suave
+    "#D5AAFF", // lila pastel
+    "#FFCBCB", // coral claro
+    "#C9F4AA", // verde lima pastel
+    "#AED9E0", // celeste grisáceo
+    "#FFDAC1"  // salmón claro
+  ];
+
+  const coloresOscuros = [
+    "#6A1B4D", // vino oscuro
+    "#4E5D5A", // gris verdoso
+    "#3E4A89", // azul profundo
+    "#5C3D2E", // marrón tabaco
+    "#2F4858", // azul petróleo
+    "#3C3F58", // gris azulado oscuro
+    "#4A5759", // verde olivo grisáceo
+    "#5C5270", // lavanda ahumado
+    "#4B3F72", // púrpura terroso
+    "#7B3E19"  // terracota oscura
+  ];
+
+  const coloresDisponibles = coloresPastel;
+
+  const colorAgotado = "#999966";
+  const colorFondoMesa = "lightgrey";
+  const cellSize = 100, cols = 4;
+
+  function ocultarConfigs() {
+    const configsDiv = document.getElementById("configs");
+    const configsMostrarDiv = document.getElementById("mostrarConfigsDiv");
+    configsDiv.style.display = "none";
+    configsMostrarDiv.style.display = "flex";
+  }
+
+  function mostrarConfigs() {
+    const configsDiv = document.getElementById("configs");
+    const configsMostrarDiv = document.getElementById("mostrarConfigsDiv");
+    configsDiv.style.display = "block";
+    configsMostrarDiv.style.display = "none";
+  }
+
+  function toggleActividades() {
+    const leyendaDiv = document.getElementById("contenedor-leyenda");
+    
+    if (leyendaDiv.style.display === "none") {
+      leyendaDiv.style.display = "block";
+    } else {
+      leyendaDiv.style.display = "none";
+    }
+  }
+
+
+  function actualizarCanvas() {
+    clearInterval(cronometro);
+    const total = +document.getElementById("totalUnidades").value;
+    const actividades = +document.getElementById("numActividades").value;
+    const agotadas = +document.getElementById("unidadesAgotadas").value;
+    minPorUnidad = +document.getElementById("minPorUnidad").value;
+    tiempoRestante = +document.getElementById("tiempoRestanteMinutos").value * 60;
+    colores = coloresDisponibles.slice(0, actividades);
+
+    // Leyenda
+    const leyendaDiv = document.getElementById("leyendaActividades");
+    leyendaDiv.innerHTML = "";
+    colores.forEach((color, i) => {
+      leyendaDiv.innerHTML += `<div class="actividad"><div class="color-box" style="background:${color}"></div><input type="text" placeholder="Actividad ${i+1}" /></div>`;
+
+    mostrarConfigs();
+    });
+
+    // Canvas de celdas
+    const canvas = document.getElementById("gridCanvas");
+    const ctx = canvas.getContext("2d");
+    const rows = Math.ceil(total / cols);
+    canvas.width = cols * cellSize;
+    canvas.height = rows * cellSize;
+    celdas = [];
+
+    for (let i = 0; i < total; i++) {
+      const col = i % cols, row = Math.floor(i / cols);
+      const x = col * cellSize, y = row * cellSize;
+      const agotado = i < agotadas;
+      const color = agotado ? colorAgotado : colores[Math.floor(Math.random() * colores.length)];
+      celdas.push({ x, y, width: cellSize, height: cellSize, color, agotado, activo: false, colorIndex: colores.indexOf(color) });
+    }
+
+    const siguiente = celdas.findIndex(c => !c.agotado);
+    if (siguiente !== -1) {
+      celdas[siguiente].activo = true;
+      celdas[siguiente].colorAnterior = celdas[siguiente].color;
+      celdas[siguiente].color = "#ffffff";
+      relojActivoIndex = siguiente;
+      sonidoArena.play();
+      cronometro = setInterval(tick, 1000);
+    }
+    dibujarCeldas();
+    actualizarMesa();
+  }
+
+  function tick() {
+    tiempoRestante--;
+    actualizarMesa();
+    if (tiempoRestante <= 0) {
+      if (relojActivoIndex !== null) {
+        celdas[relojActivoIndex].agotado = true;
+        celdas[relojActivoIndex].activo = false;
+        celdas[relojActivoIndex].color = colorAgotado;
+      }
+      const siguiente = celdas.findIndex((c, i) => i > relojActivoIndex && !c.agotado);
+      if (siguiente !== -1) {
+        celdas[siguiente].activo = true;
+        celdas[siguiente].colorAnterior = celdas[siguiente].color;
+        celdas[siguiente].color = "#ffffff";
+        relojActivoIndex = siguiente;
+        tiempoRestante = minPorUnidad * 60;
+        sonidoArena.play();
+      } else {
+        clearInterval(cronometro);
+        relojActivoIndex = null;
+      }
+      dibujarCeldas();
+    }
+  }
+
+  function dibujarCeldas() {
+    const canvas = document.getElementById("gridCanvas");
+    const ctx = canvas.getContext("2d");
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    celdas.forEach(c => {
+      ctx.fillStyle = c.color;
+      ctx.fillRect(c.x, c.y, c.width, c.height);
+      if (c.agotado) ctx.filter = "grayscale(100%)";
+      ctx.drawImage(relojBase, c.x + 20, c.y + 20, 60, 60);
+      ctx.filter = "none";
+    });
+  }
+
+  function actualizarMesa() {
+    const canvas = document.getElementById("mesaCanvas");
+    const ctx = canvas.getContext("2d");
+    canvas.width = canvas.clientWidth;
+    canvas.height = canvas.clientHeight;
+    ctx.fillStyle = colorFondoMesa;
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.drawImage(mesaImg, 0, 0, canvas.width, canvas.height);
+
+    // Texto de tiempo
+    ctx.fillStyle = "white";
+    ctx.font = "20px sans-serif";
+    ctx.fillText(`${Math.ceil(tiempoRestante / 60)} min`, 10, 25);
+
+    // Reloj
+    const prop = tiempoRestante / (minPorUnidad * 60);
+    let index = prop > 0.84 ? 0 : prop > 0.68 ? 1 : prop > 0.52 ? 2 : prop > 0.36 ? 3 : prop > 0.16 ? 4 : 5;
+    const reloj = relojImgs[index];
+    const imgW = 120, imgH = 120;
+    const x = (canvas.width - imgW) / 2;
+    const y = (canvas.height / 4) - (imgH / 2);
+    ctx.drawImage(reloj, x, y, imgW, imgH);
+  }
+
+  document.getElementById("gridCanvas").addEventListener("click", function (e) {
+    const rect = this.getBoundingClientRect();
+    const x = e.clientX - rect.left, y = e.clientY - rect.top;
+    const ctx = this.getContext("2d");
+    celdas.forEach(c => {
+      if (x >= c.x && x <= c.x + c.width && y >= c.y && y <= c.y + c.height && !c.agotado && !c.activo) {
+        c.colorIndex = (c.colorIndex + 1) % colores.length;
+        c.color = colores[c.colorIndex];
+        ctx.fillStyle = c.color;
+        ctx.fillRect(c.x, c.y, c.width, c.height);
+        ctx.drawImage(relojBase, c.x + 20, c.y + 20, 60, 60);
+      }
+    });
+  });
+
+  window.onload = actualizarCanvas;
+</script>
+</body>
+</html>

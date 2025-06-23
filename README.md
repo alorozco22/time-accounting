@@ -1,2 +1,2 @@
-# time-accounting
- Es un programa de visualización de tiempo procurando implementar mental accounting.
+# Time accounting
+Es un programa de visualización de tiempo procurando aprovechar las nociones de mental accounting de Richard Thaler.
